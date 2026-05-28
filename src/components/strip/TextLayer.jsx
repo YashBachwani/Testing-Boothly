@@ -1,0 +1,300 @@
+import { useState, useRef, useEffect } from 'react';
+import { useBooth } from '../../context/BoothContext';
+
+// Sub-component: drag, resize, rotate, touch interaction on canvas
+function DraggableText({ tLayer, isSelected, layerRef, updateText, setSelectedId, bringForward, sendBackward, removeText, duplicateText, textStyle }) {
+  const elementRef = useRef(null);
+  const pointerTracker = useRef({
+    type: null,
+    startX: 0, startY: 0,
+    initX: 0, initY: 0,
+    initScale: 1, initRotate: 0,
+    centerX: 0, centerY: 0,
+    initDist: 0, initAngle: 0,
+    pointers: {},
+  });
+
+  const [isHovered, setIsHovered] = useState(false);
+  const [showSnapX, setShowSnapX] = useState(false);
+  const [showSnapY, setShowSnapY] = useState(false);
+
+  const handlePointerDown = (e) => {
+    e.stopPropagation();
+    setSelectedId(tLayer.id);
+
+    pointerTracker.current.pointers[e.pointerId] = { clientX: e.clientX, clientY: e.clientY };
+    const activePointers = Object.values(pointerTracker.current.pointers);
+
+    if (activePointers.length === 2) {
+      const [p1, p2] = activePointers;
+      pointerTracker.current.type = 'pinch';
+      pointerTracker.current.initDist = Math.hypot(p2.clientX - p1.clientX, p2.clientY - p1.clientY);
+      pointerTracker.current.initAngle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * (180 / Math.PI);
+      pointerTracker.current.initScale = tLayer.scale || 1;
+      pointerTracker.current.initRotate = tLayer.rotate || 0;
+      elementRef.current?.setPointerCapture(e.pointerId);
+      return;
+    }
+
+    if (e.target.closest('.handle-dot') || e.target.closest('.tl-rotate-handle') || e.target.closest('.mini-action-btn')) return;
+
+    pointerTracker.current.type = 'drag';
+    pointerTracker.current.startX = e.clientX;
+    pointerTracker.current.startY = e.clientY;
+    pointerTracker.current.initX = tLayer.x;
+    pointerTracker.current.initY = tLayer.y;
+    elementRef.current?.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!pointerTracker.current.type) return;
+    if (pointerTracker.current.pointers[e.pointerId]) {
+      pointerTracker.current.pointers[e.pointerId] = { clientX: e.clientX, clientY: e.clientY };
+    }
+    const tracker = pointerTracker.current;
+
+    if (tracker.type === 'pinch') {
+      const pts = Object.values(tracker.pointers);
+      if (pts.length === 2) {
+        const [p1, p2] = pts;
+        const dist = Math.hypot(p2.clientX - p1.clientX, p2.clientY - p1.clientY);
+        const angle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * (180 / Math.PI);
+        updateText(tLayer.id, {
+          scale: Math.max(0.2, Math.min(4, tracker.initScale * (dist / tracker.initDist))),
+          rotate: (tracker.initRotate + angle - tracker.initAngle) % 360,
+        });
+      }
+      return;
+    }
+
+    if (tracker.type === 'drag' && layerRef.current) {
+      const rect = layerRef.current.getBoundingClientRect();
+      let newX = tracker.initX + ((e.clientX - tracker.startX) / rect.width) * 100;
+      let newY = tracker.initY + ((e.clientY - tracker.startY) / rect.height) * 100;
+      const snap = 3;
+      const sX = Math.abs(newX - 50) < snap;
+      const sY = Math.abs(newY - 50) < snap;
+      if (sX) newX = 50;
+      if (sY) newY = 50;
+      setShowSnapX(sX);
+      setShowSnapY(sY);
+      updateText(tLayer.id, { x: newX, y: newY });
+    } else if (tracker.type === 'resize') {
+      const dist = Math.hypot(e.clientX - tracker.centerX, e.clientY - tracker.centerY);
+      updateText(tLayer.id, { scale: Math.max(0.2, Math.min(4, tracker.initScale * (dist / tracker.initDist))) });
+    } else if (tracker.type === 'rotate') {
+      const angle = Math.atan2(e.clientY - tracker.centerY, e.clientX - tracker.centerX) * (180 / Math.PI);
+      updateText(tLayer.id, { rotate: (tracker.initRotate + angle - tracker.initAngle) % 360 });
+    }
+  };
+
+  const handlePointerUp = (e) => {
+    delete pointerTracker.current.pointers[e.pointerId];
+    try { elementRef.current?.releasePointerCapture(e.pointerId); } catch (_) {}
+    if (Object.keys(pointerTracker.current.pointers).length === 0) {
+      pointerTracker.current.type = null;
+      setShowSnapX(false);
+      setShowSnapY(false);
+    } else if (Object.keys(pointerTracker.current.pointers).length === 1 && pointerTracker.current.type === 'pinch') {
+      pointerTracker.current.type = null;
+    }
+  };
+
+  const startResize = (e) => {
+    e.stopPropagation(); e.preventDefault();
+    if (!elementRef.current) return;
+    const rect = elementRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    Object.assign(pointerTracker.current, {
+      type: 'resize', centerX: cx, centerY: cy,
+      initDist: Math.hypot(e.clientX - cx, e.clientY - cy),
+      initScale: tLayer.scale || 1,
+    });
+  };
+
+  const startRotate = (e) => {
+    e.stopPropagation(); e.preventDefault();
+    if (!elementRef.current) return;
+    const rect = elementRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    Object.assign(pointerTracker.current, {
+      type: 'rotate', centerX: cx, centerY: cy,
+      initAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * (180 / Math.PI),
+      initRotate: tLayer.rotate || 0,
+    });
+  };
+
+  return (
+    <>
+      {showSnapX && <div style={{ position:'absolute', top:0, bottom:0, left:'50%', width:'1px', borderLeft:'1px dashed #ff6eb4', zIndex:900, pointerEvents:'none' }} />}
+      {showSnapY && <div style={{ position:'absolute', left:0, right:0, top:'50%', height:'1px', borderTop:'1px dashed #ff6eb4', zIndex:900, pointerEvents:'none' }} />}
+
+      <div
+        ref={elementRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        style={{
+          position: 'absolute',
+          top: `${tLayer.y}%`, left: `${tLayer.x}%`,
+          fontSize: '32px',
+          pointerEvents: 'auto',
+          cursor: 'grab',
+          userSelect: 'none',
+          touchAction: 'none',
+          lineHeight: 1.2,
+          zIndex: isSelected ? 999 : tLayer.zIndex || 0,
+          transform: `translate(-50%, -50%) scale(${tLayer.scale || 1}) rotate(${tLayer.rotate || 0}deg)`,
+          opacity: tLayer.opacity !== undefined ? tLayer.opacity : 1,
+          padding: '8px',
+          ...textStyle,
+        }}
+      >
+        <div style={{ pointerEvents: 'none' }}>{tLayer.text}</div>
+
+        {(isSelected || isHovered) && (
+          <div style={{
+            position: 'absolute', inset: '2px',
+            border: `2px ${isSelected ? 'solid' : 'dashed'} #ff6eb4`,
+            borderRadius: '4px', pointerEvents: 'none', zIndex: 1,
+          }} />
+        )}
+
+        {isSelected && (
+          <>
+            <div className="tl-handle top-left"    onPointerDown={startResize} />
+            <div className="tl-handle top-right"   onPointerDown={startResize} />
+            <div className="tl-handle bottom-left"   onPointerDown={startResize} />
+            <div className="tl-handle bottom-right"  onPointerDown={startResize} />
+
+            <div style={{ position:'absolute', top:'-20px', left:'50%', width:'2px', height:'20px', background:'#ff6eb4', transform:'translateX(-50%)', pointerEvents:'none' }} />
+            <div
+              className="tl-rotate-handle"
+              onPointerDown={startRotate}
+              style={{ position:'absolute', top:'-36px', left:'50%', transform:'translateX(-50%)', width:'20px', height:'20px', background:'#fff', border:'2px solid #ff6eb4', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'10px', cursor:'grab', zIndex:10, pointerEvents:'auto' }}
+            >🔄</div>
+
+            {/* Mini context bar — appears ABOVE the text element */}
+            <div
+              onPointerDown={(e) => e.stopPropagation()}
+              style={{
+                position: 'absolute',
+                bottom: 'calc(100% + 10px)',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                gap: '4px',
+                padding: '4px 8px',
+                background: 'rgba(15,15,20,0.92)',
+                backdropFilter: 'blur(8px)',
+                borderRadius: '20px',
+                border: '1px solid rgba(255,110,180,0.3)',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                zIndex: 1000,
+                whiteSpace: 'nowrap',
+                pointerEvents: 'auto',
+              }}
+            >
+              {[
+                { icon: '⬆️', title: 'Front', action: () => bringForward(tLayer.id) },
+                { icon: '⬇️', title: 'Back', action: () => sendBackward(tLayer.id) },
+                { icon: '👯', title: 'Dupe', action: () => duplicateText(tLayer.id) },
+                { icon: '🗑️', title: 'Del', action: () => removeText(tLayer.id) },
+                { icon: '✔️', title: 'Done', action: () => setSelectedId(null) },
+              ].map(({ icon, title, action }) => (
+                <button key={title} className="mini-action-btn" title={title} onPointerDown={action}
+                  style={{ background:'transparent', border:'none', fontSize:'13px', cursor:'pointer', padding:'2px 3px', borderRadius:'4px' }}>
+                  {icon}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      <style dangerouslySetInnerHTML={{__html:`
+        .tl-handle { position:absolute; width:12px; height:12px; background:#fff; border:2px solid #ff6eb4; border-radius:50%; z-index:10; pointer-events:auto; }
+        .tl-handle.top-left { top:-6px; left:-6px; cursor:nwse-resize; }
+        .tl-handle.top-right { top:-6px; right:-6px; cursor:nesw-resize; }
+        .tl-handle.bottom-left { bottom:-6px; left:-6px; cursor:nesw-resize; }
+        .tl-handle.bottom-right { bottom:-6px; right:-6px; cursor:nwse-resize; }
+        .tl-rotate-handle:active { cursor:grabbing; }
+      `}} />
+    </>
+  );
+}
+
+// Main TextLayer — canvas only; no floating editor UI here
+export default function TextLayer({ readOnly = false, selectedId, setSelectedId }) {
+  const { textLayers, setTextLayers } = useBooth();
+  const layerRef = useRef(null);
+
+  const [internalSelectedId, setInternalSelectedId] = useState(null);
+  const activeSelectedId = selectedId !== undefined ? selectedId : internalSelectedId;
+  const activeSetSelectedId = setSelectedId !== undefined ? setSelectedId : setInternalSelectedId;
+
+  useEffect(() => {
+    if (readOnly) return;
+    const handle = (e) => {
+      if (layerRef.current && e.target === layerRef.current) activeSetSelectedId(null);
+    };
+    window.addEventListener('pointerdown', handle);
+    return () => window.removeEventListener('pointerdown', handle);
+  }, [readOnly, activeSetSelectedId]);
+
+  const updateText = (id, props) => setTextLayers(textLayers.map(t => t.id === id ? { ...t, ...props } : t));
+  const removeText = (id) => { setTextLayers(textLayers.filter(t => t.id !== id)); if (activeSelectedId === id) activeSetSelectedId(null); };
+  const duplicateText = (id) => {
+    const orig = textLayers.find(t => t.id === id); if (!orig) return;
+    const copy = { ...orig, id: Date.now() + Math.random(), x: Math.min(90, orig.x + 5), y: Math.min(90, orig.y + 5), zIndex: textLayers.length };
+    setTextLayers([...textLayers, copy]); activeSetSelectedId(copy.id);
+  };
+  const bringForward = (id) => { const t = textLayers.find(x => x.id === id); if (t) updateText(id, { zIndex: t.zIndex + 1 }); };
+  const sendBackward = (id) => { const t = textLayers.find(x => x.id === id); if (t && t.zIndex > 0) updateText(id, { zIndex: t.zIndex - 1 }); };
+
+  return (
+    <div id="text-layer" ref={layerRef} style={{ position:'absolute', inset:0, pointerEvents:'none', overflow:'visible', zIndex:15 }}>
+      {textLayers.slice().sort((a, b) => (a.zIndex||0) - (b.zIndex||0)).map(tLayer => {
+        const isSelected = activeSelectedId === tLayer.id;
+        const textStyle = {
+          fontFamily: tLayer.font,
+          color: tLayer.color,
+          textShadow: tLayer.shadow ? '0 2px 10px rgba(0,0,0,0.5)' : (tLayer.outline ? '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000' : 'none'),
+          opacity: tLayer.opacity !== undefined ? tLayer.opacity : 1,
+          whiteSpace: 'nowrap',
+          textAlign: tLayer.align || 'center',
+        };
+
+        if (readOnly) {
+          return (
+            <div key={tLayer.id} style={{
+              position:'absolute', top:`${tLayer.y}%`, left:`${tLayer.x}%`,
+              fontSize:'32px', lineHeight:1.2, userSelect:'none',
+              transform:`translate(-50%,-50%) scale(${tLayer.scale||1}) rotate(${tLayer.rotate||0}deg)`,
+              zIndex: tLayer.zIndex || 0, ...textStyle,
+            }}>{tLayer.text}</div>
+          );
+        }
+
+        return (
+          <DraggableText
+            key={tLayer.id}
+            tLayer={tLayer}
+            isSelected={isSelected}
+            layerRef={layerRef}
+            updateText={updateText}
+            setSelectedId={activeSetSelectedId}
+            bringForward={bringForward}
+            sendBackward={sendBackward}
+            removeText={removeText}
+            duplicateText={duplicateText}
+            textStyle={textStyle}
+          />
+        );
+      })}
+    </div>
+  );
+}
