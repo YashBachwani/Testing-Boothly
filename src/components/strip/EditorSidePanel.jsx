@@ -24,10 +24,18 @@ function StickerPanel({ selectedStickerId, setSelectedStickerId }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {/* Category tabs */}
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }} className="hide-scrollbar">
+      <div style={{ 
+        display: 'flex', 
+        gap: '6px', 
+        overflowX: 'auto', 
+        flexWrap: 'nowrap', 
+        paddingBottom: '6px',
+        width: '100%',
+      }} className="hide-scrollbar">
         {STICKER_CATEGORIES.map(cat => (
           <button key={cat.id} onClick={() => setActiveCategory(cat)} style={{
             padding: '6px 14px', borderRadius: '20px', fontSize: '0.78rem', border: 'none', cursor: 'pointer',
+            flexShrink: 0,
             background: activeCategory.id === cat.id ? 'var(--accent-pink)' : 'var(--bg-glass)',
             color: activeCategory.id === cat.id ? '#fff' : 'var(--text-muted)',
             display: 'flex', alignItems: 'center', gap: '4px',

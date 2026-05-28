@@ -219,11 +219,11 @@ function DraggableSticker({ sticker, isSelected, layerRef, updateSticker, setSel
       </div>
 
       <style dangerouslySetInnerHTML={{__html:`
-        .sl-handle { position:absolute; width:12px; height:12px; background:#fff; border:2px solid #ff6eb4; border-radius:50%; z-index:10; pointer-events:auto; }
-        .sl-handle.top-left { top:-6px; left:-6px; cursor:nwse-resize; }
-        .sl-handle.top-right { top:-6px; right:-6px; cursor:nesw-resize; }
-        .sl-handle.bottom-left { bottom:-6px; left:-6px; cursor:nesw-resize; }
-        .sl-handle.bottom-right { bottom:-6px; right:-6px; cursor:nwse-resize; }
+        .sl-handle { position:absolute; width:16px; height:16px; background:#fff; border:2px solid #ff6eb4; border-radius:50%; z-index:10; pointer-events:auto; }
+        .sl-handle.top-left { top:-8px; left:-8px; cursor:nwse-resize; }
+        .sl-handle.top-right { top:-8px; right:-8px; cursor:nesw-resize; }
+        .sl-handle.bottom-left { bottom:-8px; left:-8px; cursor:nesw-resize; }
+        .sl-handle.bottom-right { bottom:-8px; right:-8px; cursor:nwse-resize; }
         .sl-rotate-handle:active { cursor:grabbing; }
       `}} />
     </>

@@ -9,6 +9,14 @@ export default function StripCanvas({ readOnly = false, selectedStickerId, setSe
   const [dataUrl, setDataUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [zoom, setZoom] = useState(1.0);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -89,8 +97,8 @@ export default function StripCanvas({ readOnly = false, selectedStickerId, setSe
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        overflow: 'auto',
-        padding: '20px',
+        overflow: isMobile ? 'hidden' : 'auto',
+        padding: isMobile ? '8px' : '20px',
         boxSizing: 'border-box',
       }}>
         {/* Wrapper that constrains to the image dimensions */}
@@ -126,7 +134,7 @@ export default function StripCanvas({ readOnly = false, selectedStickerId, setSe
               alt="Photo Strip Preview"
               draggable={false}
               style={{
-                maxHeight: '62vh',
+                maxHeight: isMobile ? '38vh' : '62vh',
                 maxWidth: '100%',
                 objectFit: 'contain',
                 display: 'block',
